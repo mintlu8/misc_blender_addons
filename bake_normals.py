@@ -7,6 +7,7 @@
 # 3) Temporarily disable all non-multires modifiers
 # 4) Cycles bake normal
 # 5) Revert to the original state
+# 6) Reload all affected images
 #
 # Errors
 #
@@ -33,6 +34,7 @@ def select_normal_image(node_tree):
 
 def main():
     deferred_actions = []
+    changed_images = []
 
     prev_engine = bpy.context.scene.render.engine
     bpy.context.scene.render.engine = 'CYCLES'
@@ -52,6 +54,7 @@ def main():
 
         node_tree = mat.node_tree
         image = select_normal_image(node_tree)
+        changed_images.append(image.image)
         prev = node_tree.nodes.active
         node_tree.nodes.active = image
 
@@ -87,6 +90,9 @@ def main():
     deferred_actions.append(revert)
 
     bpy.ops.object.bake_image()
+
+    for image in changed_images:
+        image.update()
 
     for action in deferred_actions:
         action()
