@@ -34,38 +34,43 @@ def select_normal_image(node_tree):
 
 def main():
     deferred_actions = []
-    changed_images = []
+    try:
+        changed_images = []
 
-    prev_engine = bpy.context.scene.render.engine
-    bpy.context.scene.render.engine = 'CYCLES'
+        prev_engine = bpy.context.scene.render.engine
+        bpy.context.scene.render.engine = 'CYCLES'
 
-    def revert(engine=prev_engine):
-        bpy.context.scene.render.engine = engine
-    deferred_actions.append(revert)
-
-    for mesh in bpy.context.selected_objects:
-        if mesh.type != 'MESH':
-            continue
-        # Get the first material
-        mat = mesh.material_slots[0].material
-
-        if not mat or not mat.use_nodes:
-            continue
-
-        node_tree = mat.node_tree
-        image = select_normal_image(node_tree)
-        changed_images.append(image.image)
-        prev = node_tree.nodes.active
-        node_tree.nodes.active = image
-
-        def revert(node_tree=node_tree, prev=prev):
-            if prev:
-                node_tree.nodes.active = prev
-
+        def revert(engine=prev_engine):
+            bpy.context.scene.render.engine = engine
         deferred_actions.append(revert)
 
-        for mod in mesh.modifiers:
-            if mod.type != 'MULTIRES':
+        for mesh in bpy.context.selected_objects:
+            if mesh.type != 'MESH':
+                continue
+            # Get the first material
+            mat = mesh.material_slots[0].material
+
+            if not mat or not mat.use_nodes:
+                continue
+
+            node_tree = mat.node_tree
+            image = select_normal_image(node_tree)
+            changed_images.append(image.image)
+            prev = node_tree.nodes.active
+            node_tree.nodes.active = image
+
+            def revert(node_tree=node_tree, prev=prev):
+                if prev:
+                    node_tree.nodes.active = prev
+
+            deferred_actions.append(revert)
+
+            multires_found = False
+
+            for mod in mesh.modifiers:
+                if mod.type == 'MULTIRES':
+                    multires_found = True
+                    continue
                 prev = mod.show_viewport
                 mod.show_viewport = False
 
@@ -74,33 +79,37 @@ def main():
 
                 deferred_actions.append(revert)
 
-    # set baking parameters
-    bake_type = bpy.context.scene.render.bake_type
-    multires = bpy.context.scene.render.use_bake_multires
-    margin = bpy.context.scene.render.bake_margin
+            if not multires_found:
+                raise Exception("Expected multires.")
 
-    def revert(bake_type=bake_type, multires=multires, margin=margin):
-        bpy.context.scene.render.bake_type = bake_type
-        bpy.context.scene.render.use_bake_multires = multires
-        bpy.context.scene.render.bake_margin = margin
+        # set baking parameters
+        bake_type = bpy.context.scene.render.bake_type
+        multires = bpy.context.scene.render.use_bake_multires
+        margin = bpy.context.scene.render.bake_margin
 
-    bpy.context.scene.render.bake_type = 'NORMALS'
-    bpy.context.scene.render.use_bake_multires = True
-    bpy.context.scene.render.bake_margin = 16
-    deferred_actions.append(revert)
+        def revert(bake_type=bake_type, multires=multires, margin=margin):
+            bpy.context.scene.render.bake_type = bake_type
+            bpy.context.scene.render.use_bake_multires = multires
+            bpy.context.scene.render.bake_margin = margin
 
-    bpy.ops.object.bake_image()
+        bpy.context.scene.render.bake_type = 'NORMALS'
+        bpy.context.scene.render.use_bake_multires = True
+        bpy.context.scene.render.bake_margin = 16
+        deferred_actions.append(revert)
 
-    for image in changed_images:
-        image.update()
+        bpy.ops.object.bake_image()
 
-    for action in deferred_actions:
-        action()
+        for image in changed_images:
+            image.update()
+    except Exception as e:
+        raise e
+    finally:
+        for action in deferred_actions:
+            action()
 
 
-# Define the operator
 class OBJECT_OT_bake_multires_normal(bpy.types.Operator):
-    """Run custom function"""
+    """Generate normal map from multires."""
     bl_idname = "object.bake_multires_normal"
     bl_label = "Bake Multires Normal"
     bl_options = {'REGISTER', 'UNDO'}
@@ -110,7 +119,10 @@ class OBJECT_OT_bake_multires_normal(bpy.types.Operator):
         obj = context.active_object
         if obj:
             self.report({'INFO'}, f"Baked multires normal ran on {obj.name}")
-            main()
+            try:
+                main()
+            except Exception as e:
+                self.report({'WARNING'}, f"{e}")
         else:
             self.report({'WARNING'}, "No active object")
         return {'FINISHED'}

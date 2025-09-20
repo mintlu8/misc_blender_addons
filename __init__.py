@@ -10,13 +10,16 @@ bl_info = {
 }
 
 import importlib
-from . import bake_normals
+from . import bake_normals, init_shader
 
 # Reload for development (so Blender updates without restart)
 importlib.reload(bake_normals)
+importlib.reload(init_shader)
 
 def register():
     bake_normals.register()
+    init_shader.register()
 
 def unregister():
     bake_normals.unregister()
+    init_shader.unregister()
